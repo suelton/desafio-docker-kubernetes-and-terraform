@@ -1,0 +1,35 @@
+# Nenhuma credencial aqui: postgres.password é obrigatório e vem do Terraform
+# (random_password) via set sensível; o chart falha sem ele.
+host: mural.localtest.me
+ingressClassName: traefik
+
+api:
+  image: { repository: mural-api, tag: latest, pullPolicy: IfNotPresent }
+  replicas: 2
+  port: 8080
+  resources:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+web:
+  image: { repository: mural-web, tag: latest, pullPolicy: IfNotPresent }
+  replicas: 2
+  port: 8080
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+postgres:
+  image: postgres:16-alpine
+  user: mural
+  database: mural
+  password: ""
+  storage: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+migrate:
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels: {{- include "mural.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.api.port | quote }}
+  API_UPSTREAM: {{ printf "%s-api:80" .Release.Name | quote }}

@@ -1,0 +1,59 @@
+# Só para entender a app localmente (a entrega é Docker + Helm + Terraform).
+# Senha de desenvolvimento local; no cluster ela vem de um Secret gerado pelo Terraform.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mural
+      POSTGRES_PASSWORD: mural-dev
+      POSTGRES_DB: mural
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mural -d mural"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: mural-dev
+    volumes:
+      - ./app/api/migrations:/migrations:ro
+    # o glob é expandido em ordem alfabética: 001 antes de 002
+    entrypoint: ["sh", "-c", "for f in /migrations/*.sql; do psql -h db -U mural -d mural -v ON_ERROR_STOP=1 -f $$f || exit 1; done"]
+    restart: "no"
+
+  api:
+    image: golang:1.23-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    working_dir: /src
+    volumes:
+      - ./app/api:/src
+    environment:
+      DATABASE_URL: postgres://mural:mural-dev@db:5432/mural?sslmode=disable
+      PORT: "8080"
+    command: ["go", "run", "."]
+
+  web:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    environment:
+      API_UPSTREAM: api:8080
+    volumes:
+      - ./app/web:/usr/share/nginx/html:ro
+      - ./app/web/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

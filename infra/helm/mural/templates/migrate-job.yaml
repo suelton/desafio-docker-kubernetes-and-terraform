@@ -1,0 +1,38 @@
+{{- /*
+  Job comum (não hook): um hook pre-install rodaria antes do Postgres existir e um
+  post-install travaria o `helm --wait` (a API só fica Ready depois da migração).
+  O nome carrega o hash das migrations: só é recriado quando elas mudam
+  (o spec do Job é imutável). As migrations são idempotentes.
+*/ -}}
+{{- $hash := include "mural.migrationsHash" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate-{{ $hash }}
+  labels: {{- include "mural.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: {{ .Values.postgres.image }}
+          env:
+            - { name: PGHOST, value: {{ include "mural.pgHost" . | quote }} }
+            - { name: PGUSER, value: {{ .Values.postgres.user | quote }} }
+            - { name: PGDATABASE, value: {{ .Values.postgres.database | quote }} }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-db, key: POSTGRES_PASSWORD } }
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -q; do echo "aguardando postgres..."; sleep 2; done
+              for f in /migrations/*.sql; do echo "aplicando $f"; psql -v ON_ERROR_STOP=1 -f "$f" || exit 1; done
+          resources: {{- toYaml .Values.migrate.resources | nindent 12 }}
+          volumeMounts:
+            - { name: migrations, mountPath: /migrations, readOnly: true }
+      volumes:
+        - name: migrations
+          configMap: { name: {{ .Release.Name }}-migrations }
